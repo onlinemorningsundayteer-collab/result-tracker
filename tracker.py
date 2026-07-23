@@ -1,4 +1,3 @@
-import hashlib
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -7,7 +6,7 @@ from bs4 import BeautifulSoup
 BOT_TOKEN = "8600395273:AAHkBESMupTIXel70sG1R7nyNZvQI95YAaI"
 CHAT_ID = "8875207406"
 
-# আপনার দেওয়া ১৭টি ওয়েবসাইটের সম্পূর্ণ তালিকা
+# ১৭টি ওয়েবসাইটের তালিকা
 WEBSITES = [
     {
         "name": "1. Juwai Teer (teerresults.com)",
@@ -71,7 +70,7 @@ WEBSITES = [
     },
     {
         "name": "16. Rajshree Lottery Results",
-        "url": "https://rajshreelotteryresult.com/",  # আপনার ১৬ নম্বর রেজাল্ট পেজটির স্ট্যান্ডার্ড লিংক
+        "url": "https://rajshreelotteryresult.com/",
     },
     {
         "name": "17. Maharashtra Lottery",
@@ -80,65 +79,78 @@ WEBSITES = [
 ]
 
 
-def send_telegram_notification(site_name, url):
-    message = (
-        f"🚨 <b>NEW RESULT UPDATED!</b> 🚨\n\n"
-        f"📌 <b>Target Site:</b> {site_name}\n"
-        f"🔗 <b>Link:</b> {url}\n\n"
-        f"⚡ <i>নির্ধারিত সময়ের পর ওয়েবসাইটে নতুন রেজাল্ট চলে এসেছে!</i>"
-    )
+def send_telegram_message(text):
     telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
     try:
         requests.post(telegram_url, data=payload, timeout=10)
     except Exception as e:
-        print(f"Failed to send Telegram message: {e}")
+        print(f"Error sending message: {e}")
 
 
-def get_site_hash(url):
+def get_clean_numbers(url):
+    # রিয়েল ব্রাউজার হেডার
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
+            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     }
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # অনাকাঙ্ক্ষিত скрипт বাদ দিয়ে মূল রেজাল্ট ডাটা রাখা
-            for script in soup(["script", "style"]):
-                script.extract()
+            # পেজের টেবিল ও ডিভ ট্যাগ থেকে শুধু সংখ্যা ও মূল টেক্সট বের করা
+            text_blocks = []
+            for tag in soup.find_all(["table", "tr", "td", "div"]):
+                t = tag.get_text(strip=True)
+                if t and len(t) < 300:
+                    text_blocks.append(t)
 
-            text = soup.get_text()
-            return hashlib.md5(text.encode("utf-8")).hexdigest()
+            return " ".join(text_blocks)
     except Exception as e:
-        print(f"Error checking {url}: {e}")
+        print(f"Error fetching {url}: {e}")
     return None
 
 
 def main():
+    updated_count = 0
+    checked_count = 0
+
     for i, site in enumerate(WEBSITES):
-        current_hash = get_site_hash(site["url"])
-        if not current_hash:
+        current_data = get_clean_numbers(site["url"])
+        if not current_data:
             continue
 
-        filename = f"site_hash_{i}.txt"
-        old_hash = ""
+        checked_count += 1
+        filename = f"site_data_{i}.txt"
+        old_data = ""
 
         if os.path.exists(filename):
-            with open(filename, "r") as f:
-                old_hash = f.read().strip()
+            with open(filename, "r", encoding="utf-8") as f:
+                old_data = f.read()
 
-        # আগের রেজাল্টের সাথে নতুন রেজাল্ট না মিললেই ইনস্ট্যান্ট মেসেজ যাবে
-        if old_hash and old_hash != current_hash:
-            send_telegram_notification(site["name"], site["url"])
+        # যদি ডাটা চেঞ্জ হয়
+        if old_data and old_data != current_data:
+            msg = (
+                f"🚨 <b>RESULT UPDATED!</b> 🚨\n\n📌 <b>Site:</b>"
+                f" {site['name']}\n🔗 <b>Link:</b> {site['url']}\n\n⚡"
+                " <i>ওয়েবসাইটে রেজাল্ট আপডেট হয়েছে!</i>"
+            )
+            send_telegram_message(msg)
+            updated_count += 1
 
-        # বর্তমান রেজাল্টের হ্যাশ ফাইলে লিখে রাখা
-        with open(filename, "w") as f:
-            f.write(current_hash)
+        # নতুন ডাটা সেভ রাখা
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(current_data)
+
+    # এটি প্রতি রান শেষে বটের স্ট্যাটাস জানানোর জন্য টেস্ট বার্তা পাঠাবে
+    debug_msg = f"⚙️ <b>Tracker Check Done!</b>\n\n✅ Checked Sites: {checked_count}/{len(WEBSITES)}\n🔔 Updates Found: {updated_count}"
+    send_telegram_message(debug_msg)
 
 
 if __name__ == "__main__":
     main()
-
