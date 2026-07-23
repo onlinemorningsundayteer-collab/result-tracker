@@ -1,0 +1,34 @@
+name: Website Result Tracker
+
+on:
+  schedule:
+    # প্রতি ৫ মিনিট পর পর স্বয়ংক্রিয়ভাবে চেক করবে
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/python-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run tracker script
+        run: python tracker.py
+
+      - name: Save updated data
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add site_hash_*.txt || true
+          git commit -m "Update result hash" || exit 0
+          git push
+
